@@ -2,6 +2,7 @@ from functools import lru_cache
 import json
 from sys import stdin, stdout
 import tempfile
+import os
 from urllib.parse import urlparse
 
 from azure.storage.blob import BlockBlobService
@@ -25,7 +26,6 @@ def block_blob_service(account_name, sas_token):
 
 
 def parse_href(href):
-    # href: f"https://{account_name}.blob.core.windows.net/{self.container}/{blob}?{sas_query}"
     url = urlparse(href)
     account_name = url.hostname.split('.')[0]
     _, container_name, blob_name = url.path.split('/')
@@ -56,16 +56,18 @@ def handle_transfers(operation):
         service = block_blob_service(account_name, sas_token)
 
         last_current = 0
-        def progress_callback(current, total):
-            report_progress(oid, current, current - last_current)
-            last_current = current
+        def progress_callback(current, total):  # noqa
+            report_progress(oid, current, current - last_current)  # noqa
+            last_current = current  # noqa
 
         if operation == 'upload':
             path = transfer['path']
-            service.create_blob_from_path(container_name, blob_name, path, progress_callback=progress_callback)
+            service.create_blob_from_path(container_name, blob_name, path,
+                                          progress_callback=progress_callback)
         elif operation == 'download':
             path = temp_file_path()
-            service.get_blob_to_path(container_name, blob_name, path, progress_callback=progress_callback)
+            service.get_blob_to_path(container_name, blob_name, path,
+                                     progress_callback=progress_callback)
 
         complete_payload = {'event': 'complete', 'oid': oid}
         if operation == 'download':
@@ -78,7 +80,7 @@ def handle_transfers(operation):
 def main():
     init = read()
     assert init['event'] == 'init'
-    respond({})
+    write({})
     handle_transfers(init['operation'])
 
 
