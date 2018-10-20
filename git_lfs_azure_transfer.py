@@ -48,7 +48,7 @@ def report_error(code, message, event=None, oid=None):
     }
     if event:
         payload['event'] = event
-    if event:
+    if oid:
         payload['oid'] = oid
     write(payload)
 
