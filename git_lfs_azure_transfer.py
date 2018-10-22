@@ -10,8 +10,6 @@ from azure.storage.blob import BlockBlobService
 
 def read():
     request = json.loads(stdin.readline().strip())
-    if request['event'] == 'terminate':
-        return
     return request
 
 
@@ -59,39 +57,35 @@ def temp_file_path():
     return path
 
 
-def handle_transfers(operation):
-    transfer = read()
-    while transfer:
-        oid = transfer['oid']
-        try:
-            href = transfer['action']['href']
-            (account_name, container_name,
-             blob_name, sas_token) = parse_href(href)
-            service = block_blob_service(account_name, sas_token)
+def handle_transfer(operation, transfer):
+    oid = transfer['oid']
+    try:
+        href = transfer['action']['href']
+        (account_name, container_name,
+         blob_name, sas_token) = parse_href(href)
+        service = block_blob_service(account_name, sas_token)
 
-            last_current = 0
-            def progress_cb(current, total):  # noqa
-                report_progress(oid, current, current - last_current)  # noqa
-                last_current = current  # noqa
+        last_current = 0
+        def progress_cb(current, total):  # noqa
+            report_progress(oid, current, current - last_current)  # noqa
+            last_current = current  # noqa
 
-            if operation == 'upload':
-                path = transfer['path']
-                service.create_blob_from_path(container_name, blob_name, path,
-                                              progress_callback=progress_cb)
-            elif operation == 'download':
-                path = temp_file_path()
-                service.get_blob_to_path(container_name, blob_name, path,
-                                         progress_callback=progress_cb)
+        if operation == 'upload':
+            path = transfer['path']
+            service.create_blob_from_path(container_name, blob_name, path,
+                                          progress_callback=progress_cb)
+        elif operation == 'download':
+            path = temp_file_path()
+            service.get_blob_to_path(container_name, blob_name, path,
+                                     progress_callback=progress_cb)
 
-            complete_payload = {'event': 'complete', 'oid': oid}
-            if operation == 'download':
-                complete_payload['path'] = path
-            write(complete_payload)
-        except Exception as err:
-            report_error(2, 'transfer failed: {}'.format(err),
-                         event='complete', oid=oid)
-
-        transfer = read()
+        complete_payload = {'event': 'complete', 'oid': oid}
+        if operation == 'download':
+            complete_payload['path'] = path
+        write(complete_payload)
+    except Exception as err:
+        report_error(2, 'transfer failed: {}'.format(err),
+                     event='complete', oid=oid)
 
 
 def main():
@@ -99,10 +93,19 @@ def main():
         init = read()
         assert init['event'] == 'init'
         operation = init['operation']
+        write({})
     except Exception as err:
         report_error(32, 'init failed: {}'.format(err))
-    write({})
-    handle_transfers(operation)
+
+    try:
+        transfer = read()
+        while transfer:
+            if transfer['event'] == 'terminate':
+                break
+            handle_transfer(operation, transfer)
+            transfer = read()
+    except Exception as err:
+        report_error(64, 'unexpected runtime error: {}'.format(err))
 
 
 if __name__ == "__main__":
